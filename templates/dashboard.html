@@ -1,0 +1,590 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Telemonitoreo · Signos Vitales</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mqtt/4.3.7/mqtt.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+:root {
+  --bg:      #0F172A;
+  --bg2:     #1E293B;
+  --bg3:     #263348;
+  --border:  #334155;
+  --text:    #F8FAFC;
+  --sub:     #94A3B8;
+  --muted:   #64748B;
+  --ok:      #22c55e;
+  --warn:    #f59e0b;
+  --danger:  #ef4444;
+  --accent:  #818cf8;
+  --font:    'Inter', system-ui, sans-serif;
+}
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  min-height: 100vh;
+  padding: 1.25rem 1.5rem;
+}
+
+/* ── Header ── */
+header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.5rem;
+  flex-wrap: wrap;
+  gap: .75rem;
+}
+.header-left h1 {
+  font-size: 1.2rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+}
+.header-left h1 span { color: var(--accent); }
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+  flex-wrap: wrap;
+}
+#ts-label { font-size: .72rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+/* ── Badges ── */
+.badge {
+  display: inline-flex; align-items: center; gap: .35rem;
+  padding: .28rem .75rem; border-radius: 999px;
+  font-size: .72rem; font-weight: 600; letter-spacing: .04em;
+  border: 1px solid transparent;
+}
+.badge .dot { width: .5rem; height: .5rem; border-radius: 50%; background: currentColor; }
+.badge-ok     { background:#0f2318; color:var(--ok);    border-color:#1a3d26; }
+.badge-warn   { background:#2a200e; color:var(--warn);  border-color:#4a360e; }
+.badge-danger { background:#2a1010; color:var(--danger);border-color:#5a1a1a; }
+.badge-off    { background:#1c2538; color:var(--muted); border-color:var(--border); }
+
+/* ── Alerta banner ── */
+#alerta-banner {
+  display: none; align-items: center; gap: .6rem;
+  padding: .85rem 1.2rem; border-radius: 10px;
+  margin-bottom: 1.5rem;
+  font-size: .9rem; font-weight: 600;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+#alerta-banner.active {
+  display: flex;
+  background: #2a1010; color: var(--danger);
+  border: 1px solid var(--danger);
+}
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.65} }
+
+/* ── Grid métricas ── */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+.card {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1.25rem;
+  position: relative;
+  overflow: hidden;
+}
+.card::before {
+  content: '';
+  position: absolute; top: 0; left: 0; right: 0; height: 3px;
+  background: var(--card-accent, var(--accent));
+  border-radius: 12px 12px 0 0;
+}
+.card-label {
+  font-size: .68rem; text-transform: uppercase;
+  letter-spacing: .09em; color: var(--sub);
+  margin-bottom: .5rem;
+}
+.card-value {
+  font-size: 2.1rem; font-weight: 700; line-height: 1;
+  font-variant-numeric: tabular-nums;
+  margin-bottom: .3rem;
+}
+.card-unit { font-size: .82rem; color: var(--sub); margin-left: .15rem; }
+.card-sub  { font-size: .72rem; color: var(--muted); }
+
+/* ── Gráficas ── */
+.charts {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+.chart-card {
+  background: var(--bg2); border: 1px solid var(--border);
+  border-radius: 12px; padding: 1.1rem 1.25rem;
+}
+.chart-title {
+  font-size: .68rem; text-transform: uppercase;
+  letter-spacing: .07em; color: var(--sub);
+  margin-bottom: .75rem;
+}
+
+/* ── Panel de rangos ── */
+.rangos-section {
+  background: var(--bg2); border: 1px solid var(--border);
+  border-radius: 12px; margin-bottom: 1.5rem; overflow: hidden;
+}
+.rangos-header {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: .9rem 1.25rem; cursor: pointer;
+  user-select: none;
+}
+.rangos-header:hover { background: var(--bg3); }
+.rangos-header h2 {
+  font-size: .72rem; text-transform: uppercase;
+  letter-spacing: .08em; color: var(--sub);
+  display: flex; align-items: center; gap: .5rem;
+}
+.rangos-toggle { font-size: .8rem; color: var(--muted); transition: transform .2s; }
+.rangos-toggle.open { transform: rotate(180deg); }
+.rangos-body { padding: 1rem 1.25rem 1.25rem; display: none; }
+.rangos-body.open { display: block; }
+
+.rangos-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: .75rem;
+}
+.rango-item {
+  background: var(--bg3); border: 1px solid var(--border);
+  border-radius: 8px; padding: .9rem 1rem;
+}
+.rango-label {
+  font-size: .72rem; text-transform: uppercase;
+  letter-spacing: .07em; color: var(--sub);
+  margin-bottom: .6rem;
+}
+.rango-inputs {
+  display: flex; gap: .5rem; align-items: center;
+}
+.rango-inputs label { font-size: .72rem; color: var(--muted); white-space: nowrap; }
+.rango-inputs input {
+  width: 70px; padding: .3rem .5rem;
+  background: var(--bg); border: 1px solid var(--border);
+  border-radius: 6px; color: var(--text); font-size: .82rem;
+  font-variant-numeric: tabular-nums;
+  outline: none;
+}
+.rango-inputs input:focus { border-color: var(--accent); }
+.btn-guardar {
+  margin-top: .6rem; padding: .3rem .75rem;
+  background: var(--accent); color: #fff;
+  border: none; border-radius: 6px;
+  font-size: .75rem; font-weight: 600;
+  cursor: pointer; transition: opacity .15s;
+}
+.btn-guardar:hover { opacity: .85; }
+.btn-guardar.saved {
+  background: var(--ok);
+}
+.rango-estado {
+  font-size: .68rem; color: var(--muted);
+  margin-top: .35rem; min-height: .9rem;
+}
+
+/* ── Tabla ── */
+.hist-section {
+  background: var(--bg2); border: 1px solid var(--border);
+  border-radius: 12px; padding: 1rem 1.25rem; overflow-x: auto;
+}
+.hist-section h2 {
+  font-size: .72rem; text-transform: uppercase;
+  letter-spacing: .08em; color: var(--sub);
+  margin-bottom: .75rem;
+}
+table { width: 100%; border-collapse: collapse; font-size: .82rem; }
+th {
+  color: var(--sub); font-weight: 600;
+  text-align: left; padding: .45rem .65rem;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap; text-transform: uppercase;
+  font-size: .68rem; letter-spacing: .06em;
+}
+td {
+  padding: .45rem .65rem;
+  border-bottom: 1px solid #1e2d40;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+tr:last-child td { border-bottom: none; }
+.a-ok     { color: var(--ok); }
+.a-danger { color: var(--danger); }
+.a-warn   { color: var(--warn); }
+
+footer {
+  margin-top: 1.5rem; font-size: .68rem;
+  color: var(--muted); text-align: center;
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-left">
+    <h1>🫀 Telemonitoreo · <span>Paciente 1</span></h1>
+  </div>
+  <div class="header-right">
+    <span id="badge-dispositivo" class="badge badge-off">
+      <span class="dot"></span><span>Dispositivo: —</span>
+    </span>
+    <span id="badge-mqtt" class="badge badge-off">
+      <span class="dot"></span><span>MQTT: —</span>
+    </span>
+    <span id="ts-label">–</span>
+  </div>
+</header>
+
+<div id="alerta-banner">
+  <span>⚠</span><span id="alerta-texto">—</span>
+</div>
+
+<!-- Tarjetas -->
+<div class="grid">
+  <div class="card" style="--card-accent:#ef4444">
+    <div class="card-label">Frecuencia Cardíaca</div>
+    <div class="card-value" id="val-bpm">–<span class="card-unit">bpm</span></div>
+    <div class="card-sub" id="sub-bpm">Normal: 60–100 bpm</div>
+  </div>
+  <div class="card" style="--card-accent:#f59e0b">
+    <div class="card-label">Temperatura Corporal</div>
+    <div class="card-value" id="val-tcorp">–<span class="card-unit">°C</span></div>
+    <div class="card-sub" id="sub-tcorp">Normal: 36.0–37.5 °C</div>
+  </div>
+  <div class="card" style="--card-accent:#3b82f6">
+    <div class="card-label">Temperatura Ambiente</div>
+    <div class="card-value" id="val-tamb">–<span class="card-unit">°C</span></div>
+    <div class="card-sub">DHT22</div>
+  </div>
+  <div class="card" style="--card-accent:#22c55e">
+    <div class="card-label">Humedad Ambiente</div>
+    <div class="card-value" id="val-hum">–<span class="card-unit">%</span></div>
+    <div class="card-sub">DHT22</div>
+  </div>
+  <div class="card" style="--card-accent:#a855f7">
+    <div class="card-label">Aceleración / Movimiento</div>
+    <div class="card-value" style="font-size:1.1rem;padding-top:.5rem" id="val-acel">–</div>
+    <div class="card-sub">MPU6050</div>
+  </div>
+</div>
+
+<!-- Gráficas -->
+<div class="charts">
+  <div class="chart-card">
+    <div class="chart-title">Frecuencia Cardíaca — últimos 30 registros</div>
+    <canvas id="chart-bpm" height="140"></canvas>
+  </div>
+  <div class="chart-card">
+    <div class="chart-title">Temperatura Corporal — últimos 30 registros</div>
+    <canvas id="chart-tcorp" height="140"></canvas>
+  </div>
+</div>
+
+<!-- Panel de rangos clínicos -->
+<div class="rangos-section">
+  <div class="rangos-header" onclick="toggleRangos()">
+    <h2>⚙ Configurar rangos de alerta</h2>
+    <span class="rangos-toggle" id="rangos-toggle">▼</span>
+  </div>
+  <div class="rangos-body" id="rangos-body">
+    <div class="rangos-grid" id="rangos-grid">
+      <!-- Se genera dinámicamente -->
+    </div>
+  </div>
+</div>
+
+<!-- Historial -->
+<div class="hist-section">
+  <h2>Historial reciente</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Hora</th><th>BPM</th><th>T. Corporal</th>
+        <th>T. Ambiente</th><th>Humedad</th><th>Alerta</th>
+      </tr>
+    </thead>
+    <tbody id="hist-tbody">
+      <tr><td colspan="6" style="text-align:center;color:var(--muted)">Cargando…</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<footer>Sistema de Telemonitoreo · ESP32 + Mosquitto + Flask</footer>
+
+<script>
+// ── Config ────────────────────────────────────────────────────────
+const MQTT_WS  = `wss://${location.hostname}:9001`;
+const BASE     = "salud/paciente1";
+const MAX_PTS  = 30;
+
+// ── DOM helper ────────────────────────────────────────────────────
+const $ = id => document.getElementById(id);
+
+function setVal(id, v, dec = 0) {
+  const el = $(id); if (!el) return;
+  const unit = el.querySelector('.card-unit');
+  if (unit) el.childNodes[0].textContent = v != null ? Number(v).toFixed(dec) : '–';
+  else el.textContent = v != null ? v : '–';
+}
+
+// ── Badges ────────────────────────────────────────────────────────
+function badge(id, cls, txt) {
+  const el = $(id); if (!el) return;
+  el.className = `badge badge-${cls}`;
+  el.querySelector('span:last-child').textContent = txt;
+}
+
+// ── Alerta ────────────────────────────────────────────────────────
+const ALERTA_MSG = {
+  movimiento_brusco:                  "⚠ Movimiento brusco detectado",
+  bpm_fuera_rango:                    "⚠ Frecuencia cardíaca fuera de rango",
+  temperatura_corporal_fuera_rango:   "⚠ Temperatura corporal fuera de rango",
+};
+function mostrarAlerta(v) {
+  const b = $('alerta-banner'), t = $('alerta-texto');
+  const msg = ALERTA_MSG[v];
+  if (msg) { b.classList.add('active'); t.textContent = msg; }
+  else      { b.classList.remove('active'); }
+}
+
+// ── Charts ────────────────────────────────────────────────────────
+function mkChart(id, color, yMin, yMax) {
+  return new Chart($(id).getContext('2d'), {
+    type: 'line',
+    data: { labels: [], datasets: [{ data: [], borderColor: color,
+      backgroundColor: color + '22', borderWidth: 2,
+      pointRadius: 2, tension: 0.3, fill: true }] },
+    options: {
+      responsive: true, animation: { duration: 250 },
+      scales: {
+        x: { display: false },
+        y: { min: yMin, max: yMax,
+             grid:  { color: '#1e2d40' },
+             ticks: { color: '#64748B', font: { size: 10 } } }
+      },
+      plugins: { legend: { display: false },
+                 tooltip: { mode: 'index', intersect: false } }
+    }
+  });
+}
+const chartBpm   = mkChart('chart-bpm',   '#ef4444', 30,  160);
+const chartTcorp = mkChart('chart-tcorp', '#f59e0b', 34,   40);
+
+function pushPt(chart, label, val) {
+  if (val == null) return;
+  chart.data.labels.push(label);
+  chart.data.datasets[0].data.push(val);
+  if (chart.data.labels.length > MAX_PTS) {
+    chart.data.labels.shift(); chart.data.datasets[0].data.shift();
+  }
+  chart.update('none');
+}
+
+// ── Historial ─────────────────────────────────────────────────────
+function clsAlerta(a) {
+  if (!a || a==='ninguna'||a==='cancelada_por_usuario') return 'a-ok';
+  if (a==='movimiento_brusco') return 'a-warn';
+  return 'a-danger';
+}
+function cargarHistorial() {
+  fetch('/api/historial?limit=15').then(r=>r.json()).then(rows=>{
+    const tb = $('hist-tbody');
+    if (!rows.length) { tb.innerHTML='<tr><td colspan="6" style="text-align:center;color:var(--muted)">Sin datos</td></tr>'; return; }
+    tb.innerHTML = rows.reverse().map(r=>`<tr>
+      <td>${(r.ts||'–').replace('T',' ').substring(0,19)}</td>
+      <td>${r.bpm!=null?Number(r.bpm).toFixed(0):'–'}</td>
+      <td>${r.temperatura_corporal!=null?Number(r.temperatura_corporal).toFixed(1)+'°C':'–'}</td>
+      <td>${r.temperatura_ambiente!=null?Number(r.temperatura_ambiente).toFixed(1)+'°C':'–'}</td>
+      <td>${r.humedad_ambiente!=null?Number(r.humedad_ambiente).toFixed(1)+'%':'–'}</td>
+      <td class="${clsAlerta(r.alerta)}">${r.alerta||'ninguna'}</td>
+    </tr>`).join('');
+  }).catch(()=>{});
+}
+cargarHistorial();
+setInterval(cargarHistorial, 15000);
+
+// ── Panel de rangos ───────────────────────────────────────────────
+let rangosActuales = {};
+
+const RANGOS_META = [
+  { key: 'bpm',                 label: 'Frecuencia Cardíaca',  unit: 'bpm', dec: 0 },
+  { key: 'temperatura_corporal',label: 'Temperatura Corporal', unit: '°C',  dec: 1 },
+  { key: 'temperatura_ambiente',label: 'Temperatura Ambiente', unit: '°C',  dec: 1 },
+  { key: 'humedad_ambiente',    label: 'Humedad Ambiente',     unit: '%',   dec: 1 },
+];
+
+function toggleRangos() {
+  const body    = $('rangos-body');
+  const toggle  = $('rangos-toggle');
+  const abierto = body.classList.toggle('open');
+  toggle.classList.toggle('open', abierto);
+  if (abierto && Object.keys(rangosActuales).length === 0) cargarRangos();
+}
+
+function cargarRangos() {
+  fetch('/api/rangos').then(r=>r.json()).then(data=>{
+    rangosActuales = data;
+    renderRangos();
+  }).catch(()=>{});
+}
+
+function renderRangos() {
+  const grid = $('rangos-grid');
+  grid.innerHTML = RANGOS_META.map(m => {
+    const r = rangosActuales[m.key] || { min: '', max: '' };
+    return `<div class="rango-item">
+      <div class="rango-label">${m.label} (${m.unit})</div>
+      <div class="rango-inputs">
+        <label>Mín</label>
+        <input type="number" id="rmin-${m.key}" value="${r.min}" step="${m.dec>0?'0.1':'1'}">
+        <label>Máx</label>
+        <input type="number" id="rmax-${m.key}" value="${r.max}" step="${m.dec>0?'0.1':'1'}">
+        <button class="btn-guardar" onclick="guardarRango('${m.key}', this)">Guardar</button>
+      </div>
+      <div class="rango-estado" id="rst-${m.key}"></div>
+    </div>`;
+  }).join('');
+}
+
+function guardarRango(key, btn) {
+  const min = parseFloat($(`rmin-${key}`).value);
+  const max = parseFloat($(`rmax-${key}`).value);
+  const estado = $(`rst-${key}`);
+
+  if (isNaN(min) || isNaN(max) || min >= max) {
+    estado.style.color = 'var(--danger)';
+    estado.textContent = 'El mínimo debe ser menor que el máximo';
+    return;
+  }
+
+  btn.textContent = 'Guardando…';
+  btn.disabled = true;
+
+  fetch('/api/rangos', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ parametro: key, min, max })
+  })
+  .then(r => r.json())
+  .then(() => {
+    rangosActuales[key] = { min, max };
+    btn.textContent = '✓ Guardado';
+    btn.classList.add('saved');
+    estado.style.color = 'var(--ok)';
+    estado.textContent = `Rango actualizado: ${min} – ${max}`;
+    setTimeout(() => {
+      btn.textContent = 'Guardar';
+      btn.classList.remove('saved');
+      btn.disabled = false;
+      estado.textContent = '';
+    }, 2500);
+    actualizarSubtextos();
+  })
+  .catch(() => {
+    btn.textContent = 'Guardar';
+    btn.disabled = false;
+    estado.style.color = 'var(--danger)';
+    estado.textContent = 'Error al guardar';
+  });
+}
+
+function actualizarSubtextos() {
+  const rb = rangosActuales['bpm'];
+  const rt = rangosActuales['temperatura_corporal'];
+  if (rb) $('sub-bpm').textContent  = `Normal: ${rb.min}–${rb.max} bpm`;
+  if (rt) $('sub-tcorp').textContent = `Normal: ${rt.min}–${rt.max} °C`;
+}
+
+// Cargar rangos al inicio para actualizar subtextos
+fetch('/api/rangos').then(r=>r.json()).then(data=>{
+  rangosActuales = data;
+  actualizarSubtextos();
+}).catch(()=>{});
+
+// ── MQTT ──────────────────────────────────────────────────────────
+const client = mqtt.connect(MQTT_WS, {
+  clientId: 'dash-' + Math.random().toString(16).substr(2,8),
+  reconnectPeriod: 3000,
+  username: 'worker',
+  password: 'tele2024wk',
+  useSSL: true,
+});
+
+client.on('connect', () => {
+  badge('badge-mqtt', 'ok', 'MQTT: OK');
+  client.subscribe(`${BASE}/#`);
+});
+client.on('reconnect', () => badge('badge-mqtt', 'warn', 'MQTT: reconectando…'));
+client.on('offline',   () => badge('badge-mqtt', 'off',  'MQTT: sin conexión'));
+client.on('error',     () => badge('badge-mqtt', 'danger','MQTT: error'));
+
+client.on('message', (topic, payload) => {
+  const sub  = topic.replace(`${BASE}/`, '');
+  const val  = payload.toString().trim();
+  const hora = new Date().toLocaleTimeString('es-CO', { hour12: false });
+
+  switch (sub) {
+    case 'estado':
+      badge('badge-dispositivo',
+        val==='online' ? 'ok' : 'danger',
+        'Dispositivo: ' + val);
+      break;
+
+    case 'bpm': {
+      const v = parseFloat(val); if (isNaN(v)) break;
+      setVal('val-bpm', v, 0);
+      const rb = rangosActuales['bpm'];
+      $('val-bpm').style.color = (rb && (v<rb.min||v>rb.max)) ? 'var(--danger)' : 'var(--ok)';
+      pushPt(chartBpm, hora, v);
+      break;
+    }
+    case 'temperatura_corporal': {
+      const v = parseFloat(val); if (isNaN(v)) break;
+      setVal('val-tcorp', v, 1);
+      const rt = rangosActuales['temperatura_corporal'];
+      $('val-tcorp').style.color = (rt && (v<rt.min||v>rt.max)) ? 'var(--danger)' : 'var(--ok)';
+      pushPt(chartTcorp, hora, v);
+      break;
+    }
+    case 'temperatura_ambiente': {
+      const v = parseFloat(val); if (isNaN(v)) break;
+      setVal('val-tamb', v, 1);
+      break;
+    }
+    case 'humedad_ambiente': {
+      const v = parseFloat(val); if (isNaN(v)) break;
+      setVal('val-hum', v, 1);
+      break;
+    }
+    case 'aceleracion':
+      $('val-acel').textContent = val || '–';
+      break;
+
+    case 'alerta':
+      mostrarAlerta(val);
+      break;
+  }
+
+  $('ts-label').textContent = 'Actualizado: ' + hora;
+});
+</script>
+</body>
+</html>

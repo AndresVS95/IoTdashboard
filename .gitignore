@@ -1,0 +1,70 @@
+# ==============================================================================
+# .gitignore para Proyecto de Telemonitoreo de Signos Vitales (IoT)
+# ==============================================================================
+
+# --- Entornos virtuales de Python ---
+venv/
+.venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# --- Bytecode y caché de Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+.mypy_cache/
+
+# --- Bases de datos y almacenamiento local ---
+telemonitoreo.db
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+
+# --- Certificados TLS y llaves criptográficas ---
+# IMPORTANTE: Nunca subir llaves privadas ni certificados generados en despliegue
+certs/
+*.pem
+*.key
+*.csr
+*.crt
+*.pfx
+*.p12
+
+# Excepción: si se requiere incluir un certificado CA público de ejemplo,
+# descomentar la siguiente línea:
+# !certs/ca.example.crt
+
+# --- Credenciales, contraseñas y variables de entorno ---
+mqtt_passwd
+.env
+.env.*
+!.env.example
+
+# --- Logs y archivos temporales de ejecución ---
+*.log
+logs/
+*.pid
+*.tmp
+*.bak
+*~
+
+# --- Configuraciones de editores e IDEs ---
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+*.swp
+*.swo
+
+# --- Archivos del sistema operativo ---
+.DS_Store
+Thumbs.db
+desktop.ini
+$RECYCLE.BIN/
