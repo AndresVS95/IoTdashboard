@@ -3,432 +3,1944 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Telemonitoreo · Signos Vitales</title>
+<title>Monitoreo de Signos Vitales</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
 <script src="https://cdnjs.cloudflare.com/ajax/libs/mqtt/4.3.7/mqtt.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <style>
+/* ==========================================================================
+   1. VARIABLES CSS (Sección 2, 3, 4 y 8 de iot-panel-design-spec (1).md)
+   ========================================================================== */
 :root {
-  --bg:      #0F172A;
-  --bg2:     #1E293B;
-  --bg3:     #263348;
-  --border:  #334155;
-  --text:    #F8FAFC;
-  --sub:     #94A3B8;
-  --muted:   #64748B;
-  --ok:      #22c55e;
-  --warn:    #f59e0b;
-  --danger:  #ef4444;
-  --accent:  #818cf8;
-  --font:    'Inter', system-ui, sans-serif;
+  /* Paleta base — Modo Claro (por defecto) */
+  --bg-app:         #F5F5F7;             /* Fondo de la app — gris Apple */
+  --bg-surface:     #FFFFFF;             /* Tarjetas, sidebar, panels */
+  --bg-elevated:    #FFFFFF;             /* Modales, popovers — con sombra mayor */
+  --border:         rgba(0, 0, 0, 0.08); /* Separadores ultra-sutiles */
+  --text-primary:   #1D1D1F;             /* Texto principal — negro Apple */
+  --text-secondary: #6E6E73;             /* Labels, metadatos — gris Apple */
+  --text-muted:     #AEAEB2;             /* Placeholder, disabled */
+
+  /* Acento del sistema (ÚNICO color de acción) */
+  --accent:         #0A84FF;
+  --accent-tint:    rgba(10, 132, 255, 0.10);
+  --on-accent:      #FFFFFF;
+
+  /* Colores por signo vital (SOLO para el dot indicador y la línea de gráfica) */
+  --color-hr:       #FF3B30;             /* Frecuencia cardíaca */
+  --color-temp:     #FF9500;             /* Temperatura corporal */
+  --color-tamb:     #007AFF;             /* Temperatura ambiente */
+  --color-hum:      #34C759;             /* Humedad */
+  --color-accel:    #AF52DE;             /* Aceleración/movimiento */
+
+  /* Colores de estado (solo cuando hay anomalía) */
+  --state-success:  #34C759;
+  --state-warning:  #FF9500;
+  --state-danger:   #FF3B30;
+
+  /* Superficies interactivas y sombras Apple */
+  --nav-hover:      rgba(0, 0, 0, 0.04);
+  --shadow-card:    0 1px 3px rgba(0, 0, 0, 0.08), 0 1px 1px rgba(0, 0, 0, 0.04);
+  --shadow-elevated:0 8px 24px rgba(0, 0, 0, 0.12), 0 2px 6px rgba(0, 0, 0, 0.06);
+  --shadow-pill:    0 1px 2px rgba(0, 0, 0, 0.10);
+
+  /* Tipografía unificada en toda la interfaz */
+  --font-sans:      -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Inter", system-ui, sans-serif;
+  --font-display:   var(--font-sans);
+  --font-rounded:   var(--font-sans);
+  --font-mono:      var(--font-sans);
+
+  /* Escala tipográfica (Sección 3) */
+  --fs-metric-val:  44px;   /* 700 - Valor principal del signo vital */
+  --fs-metric-unit: 17px;   /* 400 - Unidad junto al valor */
+  --fs-card-title:  13px;   /* 600 - Nombre del signo vital */
+  --fs-sec-heading: 20px;   /* 700 - Título de sección (gráficas) */
+  --fs-body:        15px;   /* 400 - Texto general */
+  --fs-nav-item:    14px;   /* 400 - Ítem de navegación y reloj */
+  --fs-caption:     12px;   /* 400 - Timestamps, rangos normales */
+  --fs-sidebar-sec: 11px;   /* 600 - Labels de sección del sidebar (ALL CAPS) */
+
+  /* Espaciado base 4px (Sección 4) */
+  --space-xs:       4px;
+  --space-sm:       8px;
+  --space-md:       16px;
+  --space-lg:       24px;
+  --space-xl:       32px;
+  --card-padding:   20px;
+  --card-gap:       12px;
+
+  /* Dimensiones de layout (Sección 4 y 5) */
+  --header-height:  52px;
+  --sidebar-width:  240px;
+  --sidebar-mini:   64px;
+  --card-height:    120px;
+  --accel-height:   52px;
+  --radius-card:    12px;
+  --radius-btn:     8px;
+  --radius-pill:    20px;
+
+  /* Animaciones (Sección 8) */
+  --dur-micro:      150ms;
+  --dur-panel:      250ms;
+  --dur-fade:       100ms;
 }
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+/* Paleta base — Modo Oscuro (clase .dark en <html>) */
+html.dark {
+  color-scheme: dark;
+  --bg-app:         #000000;
+  --bg-surface:     #1C1C1E;
+  --bg-elevated:    #2C2C2E;
+  --border:         rgba(255, 255, 255, 0.08);
+  --text-primary:   #F5F5F7;
+  --text-secondary: #98989D;
+  --text-muted:     #48484A;
 
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  --nav-hover:      rgba(255, 255, 255, 0.06);
+  --shadow-card:    0 1px 3px rgba(0, 0, 0, 0.45), 0 1px 1px rgba(0, 0, 0, 0.30);
+  --shadow-elevated:0 10px 28px rgba(0, 0, 0, 0.65), 0 2px 6px rgba(0, 0, 0, 0.40);
+  --shadow-pill:    0 1px 3px rgba(0, 0, 0, 0.40);
+}
+
+/* ==========================================================================
+   2. RESET Y BASE
+   ========================================================================== */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  color-scheme: light;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  scroll-behavior: smooth;
+}
 
 body {
-  background: var(--bg);
-  color: var(--text);
-  font-family: var(--font);
+  background-color: var(--bg-app);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--fs-body);
+  font-weight: 400;
+  line-height: 1.45;
   min-height: 100vh;
-  padding: 1.25rem 1.5rem;
+  overflow-x: hidden;
 }
 
-/* ── Header ── */
-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 1.5rem;
-  flex-wrap: wrap;
-  gap: .75rem;
+/* Focus ring (Sección 5.6 y 7) */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
-.header-left h1 {
-  font-size: 1.2rem;
-  font-weight: 700;
+
+/* ==========================================================================
+   3. HEADER (Sección 5.5 — Altura 52px, lenguaje de producto sin jerga)
+   ========================================================================== */
+.app-header {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: var(--header-height);
+  background-color: var(--bg-surface);
+  border-bottom: 1px solid var(--border);
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  padding: 0 var(--space-md);
+  z-index: 100;
+}
+
+.header-left {
   display: flex;
   align-items: center;
-  gap: .5rem;
+  gap: var(--space-sm);
 }
-.header-left h1 span { color: var(--accent); }
+
+.icon-control {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+  width: 36px;
+  height: 36px;
+  background: transparent;
+  color: var(--text-secondary);
+  border: none;
+  border-radius: var(--radius-btn);
+  cursor: pointer;
+  transition: background-color var(--dur-micro) ease-out, color var(--dur-micro) ease-out;
+}
+
+.icon-control:hover {
+  background-color: var(--nav-hover);
+  color: var(--text-primary);
+}
+
+.icon-control svg {
+  width: 18px;
+  height: 18px;
+}
+
+.brand-link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-sm);
+  text-decoration: none;
+  color: var(--text-primary);
+  font-size: var(--fs-body);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.brand-mark {
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  background-color: var(--accent-tint);
+  color: var(--accent);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.brand-mark svg {
+  width: 15px;
+  height: 15px;
+}
+
+/* Selector de paciente centrado (Sección 5.5) */
+.header-center {
+  display: flex;
+  justify-content: center;
+}
+
+.patient-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-sm);
+  height: 34px;
+  padding: 0 14px;
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  font-family: var(--font-rounded);
+  font-size: var(--fs-card-title);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.patient-pill-sub {
+  font-weight: 400;
+  color: var(--text-secondary);
+}
+
+/* Punto rojo junto al nombre del dispositivo/paciente solo cuando está offline (Sección 6) */
+.device-offline-dot {
+  display: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: var(--state-danger);
+}
+
+.device-offline-dot.visible {
+  display: inline-block;
+}
+
+/* Derecha del Header: Estado de conexión + Reloj + Tema + Campana */
 .header-right {
   display: flex;
   align-items: center;
-  gap: .75rem;
-  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-sm);
 }
-#ts-label { font-size: .72rem; color: var(--muted); font-variant-numeric: tabular-nums; }
 
-/* ── Badges ── */
-.badge {
-  display: inline-flex; align-items: center; gap: .35rem;
-  padding: .28rem .75rem; border-radius: 999px;
-  font-size: .72rem; font-weight: 600; letter-spacing: .04em;
-  border: 1px solid transparent;
+.connection-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  font-size: var(--fs-card-title);
+  color: var(--text-secondary);
 }
-.badge .dot { width: .5rem; height: .5rem; border-radius: 50%; background: currentColor; }
-.badge-ok     { background:#0f2318; color:var(--ok);    border-color:#1a3d26; }
-.badge-warn   { background:#2a200e; color:var(--warn);  border-color:#4a360e; }
-.badge-danger { background:#2a1010; color:var(--danger);border-color:#5a1a1a; }
-.badge-off    { background:#1c2538; color:var(--muted); border-color:var(--border); }
 
-/* ── Alerta banner ── */
-#alerta-banner {
-  display: none; align-items: center; gap: .6rem;
-  padding: .85rem 1.2rem; border-radius: 10px;
-  margin-bottom: 1.5rem;
-  font-size: .9rem; font-weight: 600;
-  animation: pulse 1.5s ease-in-out infinite;
+.conn-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: var(--state-success);
+  flex-shrink: 0;
 }
-#alerta-banner.active {
-  display: flex;
-  background: #2a1010; color: var(--danger);
-  border: 1px solid var(--danger);
-}
-@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.65} }
 
-/* ── Grid métricas ── */
-.grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
-  gap: 1rem;
-  margin-bottom: 1.5rem;
+/* Conectado: animación pulse 2s (escala 1 -> 1.3 -> 1, opacidad 1 -> 0.5 -> 1) */
+.connection-indicator.is-connected .conn-dot {
+  background-color: var(--state-success);
+  animation: connPulse 2s ease-in-out infinite;
 }
-.card {
-  background: var(--bg2);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 1.25rem;
+
+body.critical-alert-active .connection-indicator.is-connected .conn-dot {
+  animation: none;
+}
+
+.connection-indicator.is-reconnecting .conn-dot {
+  background-color: var(--state-warning);
+}
+
+.connection-indicator.is-disconnected .conn-dot {
+  background-color: var(--state-danger);
+}
+
+.connection-indicator.is-disconnected .conn-text {
+  color: var(--state-danger);
+}
+
+@keyframes connPulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50%      { transform: scale(1.3); opacity: 0.5; }
+}
+
+.header-clock {
+  font-family: var(--font-mono);
+  font-size: var(--fs-nav-item);
+  color: var(--text-secondary);
+  padding: 0 var(--space-xs);
+  white-space: nowrap;
+}
+
+#ts-label {
+  font-size: var(--fs-caption);
+  color: var(--text-muted);
+  display: none;
+}
+
+/* Iconos de tema */
+.icon-moon {
+  display: block;
+}
+.icon-sun {
+  display: none;
+}
+html.dark .icon-moon {
+  display: none;
+}
+html.dark .icon-sun {
+  display: block;
+}
+
+.bell-wrapper {
   position: relative;
+  display: inline-flex;
+}
+
+.bell-badge {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background-color: var(--state-danger);
+  color: var(--on-accent);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  display: none;
+  align-items: center;
+  justify-content: center;
+}
+
+.bell-badge.visible {
+  display: inline-flex;
+}
+
+/* ==========================================================================
+   4. SIDEBAR (Sección 5.4 — 240px / 64px, sin borde lateral en ítem activo)
+   ========================================================================== */
+.app-body {
+  display: flex;
+  padding-top: var(--header-height);
+  min-height: 100vh;
+}
+
+.app-sidebar {
+  position: fixed;
+  top: var(--header-height);
+  left: 0;
+  bottom: 0;
+  width: var(--sidebar-width);
+  background-color: var(--bg-surface);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: var(--space-md) 12px;
+  transition: width var(--dur-panel) ease-in-out;
+  z-index: 90;
+  overflow-x: hidden;
+}
+
+.app-sidebar.collapsed {
+  width: var(--sidebar-mini);
+  padding: var(--space-md) 8px;
+}
+
+.sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* Único lugar con ALL CAPS (Sección 3 y 5.4) */
+.sidebar-section-label {
+  padding: 14px 10px 6px;
+  font-size: var(--fs-sidebar-sec);
+  font-weight: 600;
+  color: var(--text-muted);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.sidebar-section-label:first-child {
+  padding-top: 4px;
+}
+
+.app-sidebar.collapsed .sidebar-section-label {
+  opacity: 0;
+  height: 0;
+  padding: 0;
   overflow: hidden;
 }
-.card::before {
-  content: '';
-  position: absolute; top: 0; left: 0; right: 0; height: 3px;
-  background: var(--card-accent, var(--accent));
-  border-radius: 12px 12px 0 0;
-}
-.card-label {
-  font-size: .68rem; text-transform: uppercase;
-  letter-spacing: .09em; color: var(--sub);
-  margin-bottom: .5rem;
-}
-.card-value {
-  font-size: 2.1rem; font-weight: 700; line-height: 1;
-  font-variant-numeric: tabular-nums;
-  margin-bottom: .3rem;
-}
-.card-unit { font-size: .82rem; color: var(--sub); margin-left: .15rem; }
-.card-sub  { font-size: .72rem; color: var(--muted); }
 
-/* ── Gráficas ── */
-.charts {
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  height: 38px;
+  padding: 0 10px;
+  border-radius: var(--radius-btn);
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: var(--fs-nav-item);
+  font-weight: 400;
+  text-decoration: none;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color var(--dur-micro) ease-out, color var(--dur-micro) ease-out;
+}
+
+.nav-item svg {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  color: currentColor;
+}
+
+.nav-item:hover {
+  background-color: var(--nav-hover);
+  color: var(--text-primary);
+}
+
+/* Activo: fondo rgba(10,132,255,0.1), texto --accent, border-radius 8px, SIN borde lateral */
+.nav-item.active {
+  background-color: var(--accent-tint);
+  color: var(--accent);
+  font-weight: 500;
+}
+
+.app-sidebar.collapsed .nav-item {
+  justify-content: center;
+  padding: 0;
+}
+
+.app-sidebar.collapsed .nav-text {
+  display: none;
+}
+
+.sidebar-footer {
+  padding-top: var(--space-md);
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.app-sidebar.collapsed .sidebar-footer {
+  display: none;
+}
+
+.shortcut-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: var(--fs-sidebar-sec);
+  color: var(--text-muted);
+  padding: 0 4px;
+}
+
+kbd {
+  font-family: var(--font-mono);
+  font-size: var(--fs-sidebar-sec);
+  color: var(--text-muted);
+  padding: 1px 5px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: transparent;
+}
+
+/* ==========================================================================
+   5. TOAST DE ALERTA CLÍNICA (Sección 6 — Deslizante desde arriba centrado)
+   ========================================================================== */
+#alerta-banner {
+  position: fixed;
+  top: calc(var(--header-height) + var(--space-md));
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 120;
+  display: none;
+  align-items: center;
+  gap: 12px;
+  min-width: 340px;
+  max-width: 540px;
+  padding: 12px 16px;
+  background-color: var(--bg-elevated);
+  border: 1px solid var(--state-danger);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-elevated);
+  color: var(--text-primary);
+}
+
+#alerta-banner.active {
+  display: flex;
+}
+
+.alerta-icon {
+  color: var(--state-danger);
+  display: inline-flex;
+  flex-shrink: 0;
+}
+
+.alerta-icon svg {
+  width: 18px;
+  height: 18px;
+}
+
+#alerta-texto {
+  flex: 1;
+  font-size: var(--fs-nav-item);
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.alerta-close {
+  min-width: 44px;
+  min-height: 44px;
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  border-radius: var(--radius-btn);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.alerta-close:hover {
+  background-color: var(--nav-hover);
+  color: var(--text-primary);
+}
+
+.alerta-close svg {
+  width: 15px;
+  height: 15px;
+}
+
+/* ==========================================================================
+   6. ÁREA DE CONTENIDO Y GRID 12 COLUMNAS (Sección 4)
+   ========================================================================== */
+.main-content {
+  flex: 1;
+  margin-left: var(--sidebar-width);
+  padding: var(--space-lg);
+  transition: margin-left var(--dur-panel) ease-in-out;
+  min-width: 0;
+}
+
+.app-sidebar.collapsed ~ .main-content {
+  margin-left: var(--sidebar-mini);
+}
+
+.panel-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: 1rem;
-  margin-bottom: 1.5rem;
-}
-.chart-card {
-  background: var(--bg2); border: 1px solid var(--border);
-  border-radius: 12px; padding: 1.1rem 1.25rem;
-}
-.chart-title {
-  font-size: .68rem; text-transform: uppercase;
-  letter-spacing: .07em; color: var(--sub);
-  margin-bottom: .75rem;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: var(--space-md);
+  max-width: 1480px;
+  margin: 0 auto;
 }
 
-/* ── Panel de rangos ── */
+/* ==========================================================================
+   7. TARJETAS DE MÉTRICA (Sección 5.1 — Altura 120px, sin bordes, valor+unidad inline)
+   ========================================================================== */
+.metrics-row {
+  grid-column: span 12;
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: var(--card-gap);
+}
+
+.card {
+  grid-column: span 3;
+  height: var(--card-height);
+  padding: var(--card-padding);
+  background-color: var(--bg-surface);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+/* Nombre del signo vital: 13px, 600, text-secondary + dot de color */
+.card-label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  font-size: var(--fs-card-title);
+  font-weight: 600;
+  color: var(--text-secondary);
+  line-height: 1.2;
+}
+
+.vital-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: var(--vital-color, var(--accent));
+  flex-shrink: 0;
+}
+
+/* Valor numérico (44px, 700, SF Mono) + unidad inline (17px, 400, text-secondary) */
+.card-value {
+  font-family: var(--font-mono);
+  font-size: var(--fs-metric-val);
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.03em;
+  color: var(--text-primary);
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  transition: opacity var(--dur-fade) ease-out;
+}
+
+.card-value.fade-tick {
+  opacity: 0.65;
+}
+
+.card-unit {
+  font-family: var(--font-sans);
+  font-size: var(--fs-metric-unit);
+  font-weight: 400;
+  letter-spacing: 0;
+  color: var(--text-secondary);
+}
+
+/* Delta de variación: 12px, text-muted, vacío cuando no hay dato */
+.card-delta {
+  font-size: var(--fs-caption);
+  font-weight: 400;
+  color: var(--text-muted);
+  min-height: 14px;
+  line-height: 1.15;
+}
+
+.card-sub {
+  display: none;
+}
+
+/* Estado ADVERTENCIA: solo cambia el valor numérico y el dot, NO la tarjeta */
+.card.is-warning .card-value {
+  color: var(--state-warning);
+}
+.card.is-warning .vital-dot {
+  background-color: var(--state-warning);
+}
+
+/* Estado CRÍTICO: solo cambia el valor numérico y el dot con pulse, NO la tarjeta */
+.card.is-danger .card-value {
+  color: var(--state-danger);
+}
+.card.is-danger .vital-dot {
+  background-color: var(--state-danger);
+  animation: dangerDotPulse 1.2s ease-in-out infinite;
+}
+
+@keyframes dangerDotPulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%      { opacity: 0.35; transform: scale(1.25); }
+}
+
+/* Cero animaciones en el área de métricas durante alerta crítica activa (Sección 8) */
+body.critical-alert-active .metrics-row *,
+body.critical-alert-active .accel-bar * {
+  animation: none !important;
+  transition: none !important;
+}
+
+/* ==========================================================================
+   8. BARRA DE ACELERACIÓN / MOVIMIENTO (Sección 5.3 — Horizontal, 52px)
+   ========================================================================== */
+.accel-bar {
+  grid-column: span 12;
+  height: var(--accel-height);
+  padding: 0 var(--card-padding);
+  background-color: var(--bg-surface);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md);
+}
+
+.accel-left {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.accel-title {
+  font-size: var(--fs-card-title);
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.accel-right {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  color: var(--text-secondary);
+  font-size: var(--fs-nav-item);
+}
+
+#val-acel {
+  font-family: var(--font-mono);
+  font-size: var(--fs-nav-item);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.accel-desc {
+  font-size: var(--fs-caption);
+  color: var(--text-secondary);
+}
+
+/* Badge de evento en barra de movimiento: SOLO visible cuando hay anomalía */
+.event-badge {
+  display: none;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: var(--fs-caption);
+  font-weight: 600;
+  background-color: rgba(255, 59, 48, 0.12);
+  color: var(--state-danger);
+}
+
+.event-badge.visible {
+  display: inline-flex;
+}
+
+/* ==========================================================================
+   9. GRÁFICA DE TIEMPO REAL (Sección 5.2 — Span 8, fondo unificado --bg-surface)
+   ========================================================================== */
+.charts-card {
+  grid-column: span 8;
+  background-color: var(--bg-surface);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+  padding: var(--card-padding);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+}
+
+.charts-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md);
+  flex-wrap: wrap;
+}
+
+.section-heading {
+  font-family: var(--font-display);
+  font-size: var(--fs-sec-heading);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+}
+
+/* Segmented control estilo Apple (Sección 5.2 — fondo --bg-app, pill blanco activo) */
+.segmented-control {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px;
+  background-color: var(--bg-app);
+  border-radius: var(--radius-btn);
+}
+
+.seg-btn {
+  min-width: 44px;
+  height: 30px;
+  padding: 0 12px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: var(--fs-card-title);
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color var(--dur-micro) ease-out, color var(--dur-micro) ease-out;
+}
+
+.seg-btn:hover {
+  color: var(--text-primary);
+}
+
+.seg-btn.active {
+  background-color: var(--bg-surface);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-pill);
+}
+
+/* Serie de gráfica sobre el mismo --bg-surface sin fondos grises internos */
+.chart-series {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.chart-series + .chart-series {
+  padding-top: var(--space-md);
+  border-top: 1px solid var(--border);
+}
+
+.chart-series-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  flex-wrap: wrap;
+}
+
+.chart-series-title {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-sm);
+  font-size: var(--fs-card-title);
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.chart-series-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  font-size: var(--fs-caption);
+  color: var(--text-muted);
+}
+
+.legend-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.swatch-normal {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  background-color: rgba(52, 199, 89, 0.18);
+}
+
+.swatch-threshold {
+  width: 12px;
+  height: 0;
+  border-top: 1px dashed var(--state-danger);
+}
+
+.chart-wrap {
+  position: relative;
+  width: 100%;
+  height: 185px;
+}
+
+/* ==========================================================================
+   10. HISTORIAL (Sección 4 — Span 4, superficie limpia)
+   ========================================================================== */
+.hist-card {
+  grid-column: span 4;
+  background-color: var(--bg-surface);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+  padding: var(--card-padding);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.hist-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-sm);
+}
+
+.hist-caption {
+  font-size: var(--fs-caption);
+  color: var(--text-muted);
+}
+
+.table-container {
+  overflow-x: auto;
+  max-height: 440px;
+  overflow-y: auto;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th {
+  text-align: left;
+  padding: 8px 6px;
+  font-size: var(--fs-caption);
+  font-weight: 600;
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border);
+  background-color: var(--bg-surface);
+  position: sticky;
+  top: 0;
+  white-space: nowrap;
+}
+
+td {
+  padding: 9px 6px;
+  font-family: var(--font-mono);
+  font-size: var(--fs-caption);
+  color: var(--text-primary);
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+tr:last-child td {
+  border-bottom: none;
+}
+
+/* En la tabla, el estado normal es discreto y solo anomalías destacan */
+.a-ok {
+  font-family: var(--font-sans);
+  color: var(--text-muted);
+}
+
+.a-warn {
+  font-family: var(--font-sans);
+  font-weight: 600;
+  color: var(--state-warning);
+}
+
+.a-danger {
+  font-family: var(--font-sans);
+  font-weight: 600;
+  color: var(--state-danger);
+}
+
+/* ==========================================================================
+   11. PANEL DE RANGOS Y BOTONES (Sección 5.6)
+   ========================================================================== */
 .rangos-section {
-  background: var(--bg2); border: 1px solid var(--border);
-  border-radius: 12px; margin-bottom: 1.5rem; overflow: hidden;
+  grid-column: span 12;
+  background-color: var(--bg-surface);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
 }
+
 .rangos-header {
-  display: flex; justify-content: space-between; align-items: center;
-  padding: .9rem 1.25rem; cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px var(--card-padding);
+  cursor: pointer;
   user-select: none;
+  transition: background-color var(--dur-micro) ease-out;
 }
-.rangos-header:hover { background: var(--bg3); }
+
+.rangos-header:hover {
+  background-color: var(--nav-hover);
+}
+
 .rangos-header h2 {
-  font-size: .72rem; text-transform: uppercase;
-  letter-spacing: .08em; color: var(--sub);
-  display: flex; align-items: center; gap: .5rem;
+  font-size: var(--fs-body);
+  font-weight: 600;
+  color: var(--text-primary);
 }
-.rangos-toggle { font-size: .8rem; color: var(--muted); transition: transform .2s; }
-.rangos-toggle.open { transform: rotate(180deg); }
-.rangos-body { padding: 1rem 1.25rem 1.25rem; display: none; }
-.rangos-body.open { display: block; }
+
+.rangos-toggle {
+  width: 32px;
+  height: 32px;
+  min-width: 44px;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+  transition: transform var(--dur-panel) ease-in-out;
+}
+
+.rangos-toggle svg {
+  width: 16px;
+  height: 16px;
+}
+
+.rangos-toggle.open {
+  transform: rotate(180deg);
+}
+
+.rangos-body {
+  display: none;
+  padding: var(--card-padding);
+  border-top: 1px solid var(--border);
+}
+
+.rangos-body.open {
+  display: block;
+}
 
 .rangos-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-  gap: .75rem;
+  gap: var(--card-gap);
 }
+
 .rango-item {
-  background: var(--bg3); border: 1px solid var(--border);
-  border-radius: 8px; padding: .9rem 1rem;
+  background-color: var(--bg-app);
+  border-radius: var(--radius-btn);
+  padding: var(--space-md);
 }
+
 .rango-label {
-  font-size: .72rem; text-transform: uppercase;
-  letter-spacing: .07em; color: var(--sub);
-  margin-bottom: .6rem;
+  font-size: var(--fs-card-title);
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 10px;
 }
+
 .rango-inputs {
-  display: flex; gap: .5rem; align-items: center;
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  flex-wrap: wrap;
 }
-.rango-inputs label { font-size: .72rem; color: var(--muted); white-space: nowrap; }
+
+.rango-inputs label {
+  font-size: var(--fs-caption);
+  color: var(--text-secondary);
+}
+
 .rango-inputs input {
-  width: 70px; padding: .3rem .5rem;
-  background: var(--bg); border: 1px solid var(--border);
-  border-radius: 6px; color: var(--text); font-size: .82rem;
-  font-variant-numeric: tabular-nums;
-  outline: none;
+  width: 72px;
+  height: 38px;
+  padding: 0 10px;
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-btn);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: var(--fs-nav-item);
 }
-.rango-inputs input:focus { border-color: var(--accent); }
+
+/* Botones (Sección 5.6 — Alto 38px, padding 14px, radio 8px) */
+.btn,
 .btn-guardar {
-  margin-top: .6rem; padding: .3rem .75rem;
-  background: var(--accent); color: #fff;
-  border: none; border-radius: 6px;
-  font-size: .75rem; font-weight: 600;
-  cursor: pointer; transition: opacity .15s;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 38px;
+  min-height: 44px;
+  padding: 0 14px;
+  border: none;
+  border-radius: var(--radius-btn);
+  background-color: var(--accent);
+  color: var(--on-accent);
+  font-family: var(--font-sans);
+  font-size: var(--fs-nav-item);
+  font-weight: 600;
+  cursor: pointer;
+  transition: filter var(--dur-micro) ease-out, opacity var(--dur-micro) ease-out;
 }
-.btn-guardar:hover { opacity: .85; }
-.btn-guardar.saved {
-  background: var(--ok);
+
+.btn:hover:not(:disabled),
+.btn-guardar:hover:not(:disabled) {
+  filter: brightness(0.94);
 }
+
+.btn:disabled,
+.btn-guardar:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.btn-secondary {
+  background-color: var(--bg-app);
+  color: var(--text-primary);
+}
+
+.btn-ghost {
+  background-color: transparent;
+  color: var(--accent);
+}
+
+.btn-danger {
+  background-color: var(--state-danger);
+  color: var(--on-accent);
+}
+
 .rango-estado {
-  font-size: .68rem; color: var(--muted);
-  margin-top: .35rem; min-height: .9rem;
+  font-size: var(--fs-caption);
+  color: var(--text-muted);
+  margin-top: 6px;
+  min-height: 16px;
 }
 
-/* ── Tabla ── */
-.hist-section {
-  background: var(--bg2); border: 1px solid var(--border);
-  border-radius: 12px; padding: 1rem 1.25rem; overflow-x: auto;
+/* ==========================================================================
+   12. RESPONSIVE Y ACCESIBILIDAD
+   ========================================================================== */
+@media (max-width: 1180px) {
+  .card {
+    grid-column: span 6;
+  }
+  .charts-card,
+  .hist-card {
+    grid-column: span 12;
+  }
 }
-.hist-section h2 {
-  font-size: .72rem; text-transform: uppercase;
-  letter-spacing: .08em; color: var(--sub);
-  margin-bottom: .75rem;
-}
-table { width: 100%; border-collapse: collapse; font-size: .82rem; }
-th {
-  color: var(--sub); font-weight: 600;
-  text-align: left; padding: .45rem .65rem;
-  border-bottom: 1px solid var(--border);
-  white-space: nowrap; text-transform: uppercase;
-  font-size: .68rem; letter-spacing: .06em;
-}
-td {
-  padding: .45rem .65rem;
-  border-bottom: 1px solid #1e2d40;
-  white-space: nowrap;
-  font-variant-numeric: tabular-nums;
-}
-tr:last-child td { border-bottom: none; }
-.a-ok     { color: var(--ok); }
-.a-danger { color: var(--danger); }
-.a-warn   { color: var(--warn); }
 
-footer {
-  margin-top: 1.5rem; font-size: .68rem;
-  color: var(--muted); text-align: center;
+@media (max-width: 768px) {
+  .app-sidebar {
+    width: var(--sidebar-mini);
+    padding: var(--space-md) 8px;
+  }
+  .app-sidebar .nav-text,
+  .app-sidebar .sidebar-section-label,
+  .app-sidebar .sidebar-footer {
+    display: none;
+  }
+  .app-sidebar .nav-item {
+    justify-content: center;
+    padding: 0;
+  }
+  .main-content {
+    margin-left: var(--sidebar-mini);
+    padding: var(--space-md);
+  }
+  .card {
+    grid-column: span 12;
+  }
+  .accel-bar {
+    height: auto;
+    padding: 14px var(--card-padding);
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .header-center {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 </style>
 </head>
 <body>
 
-<header>
+<!-- ========================================================================
+     HEADER (Sección 5.5: 52px, Logo · Paciente · Estado conexión · Hora)
+     ======================================================================== -->
+<header class="app-header" role="banner">
   <div class="header-left">
-    <h1>🫀 Telemonitoreo · <span>Paciente 1</span></h1>
+    <button type="button" class="icon-control" onclick="toggleSidebar()" aria-label="Alternar barra lateral" title="Alternar barra lateral">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <rect x="3" y="3" width="18" height="18" rx="3"/>
+        <line x1="9" y1="3" x2="9" y2="21"/>
+      </svg>
+    </button>
+    <a href="#sec-metricas" class="brand-link">
+      <span class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+        </svg>
+      </span>
+      <span>Signos Vitales</span>
+    </a>
   </div>
+
+  <div class="header-center">
+    <div class="patient-pill" id="badge-dispositivo" title="Paciente activo">
+      <span id="device-offline-dot" class="device-offline-dot" aria-label="Sensor sin señal"></span>
+      <span>Paciente 1</span>
+      <span class="patient-pill-sub">· Monitoreo en casa</span>
+    </div>
+  </div>
+
   <div class="header-right">
-    <span id="badge-dispositivo" class="badge badge-off">
-      <span class="dot"></span><span>Dispositivo: —</span>
-    </span>
-    <span id="badge-mqtt" class="badge badge-off">
-      <span class="dot"></span><span>MQTT: —</span>
-    </span>
+    <!-- Estado de conexión traducido a lenguaje de usuario (Sección 5.5 y 6) -->
+    <div id="badge-mqtt" class="connection-indicator is-connected" role="status" aria-label="Estado de sincronización">
+      <span class="conn-dot"></span>
+      <span class="conn-text" id="conn-text"></span>
+    </div>
+
     <span id="ts-label">–</span>
+    <span id="live-clock" class="header-clock" aria-label="Hora actual">00:00:00</span>
+
+    <button type="button" class="icon-control" id="theme-toggle-btn" onclick="toggleTheme()" aria-label="Cambiar apariencia claro u oscuro (Tecla T)" title="Cambiar apariencia (T)">
+      <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+      </svg>
+      <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="12" cy="12" r="5"/>
+        <line x1="12" y1="1" x2="12" y2="3"/>
+        <line x1="12" y1="21" x2="12" y2="23"/>
+        <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
+        <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+        <line x1="1" y1="12" x2="3" y2="12"/>
+        <line x1="21" y1="12" x2="23" y2="12"/>
+        <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
+        <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+      </svg>
+    </button>
+
+    <div class="bell-wrapper">
+      <button type="button" class="icon-control" onclick="irAAlertas()" aria-label="Ver alertas clínicas (Tecla A)" title="Alertas clínicas (A)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+          <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+        </svg>
+      </button>
+      <span id="alert-count-badge" class="bell-badge">0</span>
+    </div>
   </div>
 </header>
 
-<div id="alerta-banner">
-  <span>⚠</span><span id="alerta-texto">—</span>
-</div>
+<!-- ========================================================================
+     CUERPO: SIDEBAR + ÁREA PRINCIPAL
+     ======================================================================== -->
+<div class="app-body">
+  <aside id="app-sidebar" class="app-sidebar" aria-label="Navegación">
+    <nav class="sidebar-nav">
+      <div class="sidebar-section-label">MONITOREO</div>
+      <a href="#sec-metricas" class="nav-item active" onclick="activarNav(this)" title="Resumen de signos vitales">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <rect x="3" y="3" width="7" height="7" rx="1.5"/>
+          <rect x="14" y="3" width="7" height="7" rx="1.5"/>
+          <rect x="14" y="14" width="7" height="7" rx="1.5"/>
+          <rect x="3" y="14" width="7" height="7" rx="1.5"/>
+        </svg>
+        <span class="nav-text">Resumen</span>
+      </a>
 
-<!-- Tarjetas -->
-<div class="grid">
-  <div class="card" style="--card-accent:#ef4444">
-    <div class="card-label">Frecuencia Cardíaca</div>
-    <div class="card-value" id="val-bpm">–<span class="card-unit">bpm</span></div>
-    <div class="card-sub" id="sub-bpm">Normal: 60–100 bpm</div>
-  </div>
-  <div class="card" style="--card-accent:#f59e0b">
-    <div class="card-label">Temperatura Corporal</div>
-    <div class="card-value" id="val-tcorp">–<span class="card-unit">°C</span></div>
-    <div class="card-sub" id="sub-tcorp">Normal: 36.0–37.5 °C</div>
-  </div>
-  <div class="card" style="--card-accent:#3b82f6">
-    <div class="card-label">Temperatura Ambiente</div>
-    <div class="card-value" id="val-tamb">–<span class="card-unit">°C</span></div>
-    <div class="card-sub">DHT22</div>
-  </div>
-  <div class="card" style="--card-accent:#22c55e">
-    <div class="card-label">Humedad Ambiente</div>
-    <div class="card-value" id="val-hum">–<span class="card-unit">%</span></div>
-    <div class="card-sub">DHT22</div>
-  </div>
-  <div class="card" style="--card-accent:#a855f7">
-    <div class="card-label">Aceleración / Movimiento</div>
-    <div class="card-value" style="font-size:1.1rem;padding-top:.5rem" id="val-acel">–</div>
-    <div class="card-sub">MPU6050</div>
-  </div>
-</div>
+      <a href="#sec-graficas" class="nav-item" onclick="activarNav(this)" title="Tendencias en tiempo real">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+        </svg>
+        <span class="nav-text">Tendencias</span>
+      </a>
 
-<!-- Gráficas -->
-<div class="charts">
-  <div class="chart-card">
-    <div class="chart-title">Frecuencia Cardíaca — últimos 30 registros</div>
-    <canvas id="chart-bpm" height="140"></canvas>
-  </div>
-  <div class="chart-card">
-    <div class="chart-title">Temperatura Corporal — últimos 30 registros</div>
-    <canvas id="chart-tcorp" height="140"></canvas>
-  </div>
-</div>
+      <a href="#sec-historial" class="nav-item" onclick="activarNav(this)" title="Registro histórico">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="9"/>
+          <polyline points="12 7 12 12 15 14"/>
+        </svg>
+        <span class="nav-text">Historial</span>
+      </a>
 
-<!-- Panel de rangos clínicos -->
-<div class="rangos-section">
-  <div class="rangos-header" onclick="toggleRangos()">
-    <h2>⚙ Configurar rangos de alerta</h2>
-    <span class="rangos-toggle" id="rangos-toggle">▼</span>
-  </div>
-  <div class="rangos-body" id="rangos-body">
-    <div class="rangos-grid" id="rangos-grid">
-      <!-- Se genera dinámicamente -->
+      <div class="sidebar-section-label">PACIENTES</div>
+      <a href="#sec-metricas" class="nav-item" onclick="activarNav(this)" title="Paciente 1">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+          <circle cx="12" cy="7" r="4"/>
+        </svg>
+        <span class="nav-text">Paciente 1</span>
+      </a>
+
+      <div class="sidebar-section-label">AJUSTES</div>
+      <button type="button" class="nav-item" onclick="abrirYEnfocarRangos(this)" title="Configurar rangos de alerta">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <line x1="4" y1="21" x2="4" y2="14"/>
+          <line x1="4" y1="10" x2="4" y2="3"/>
+          <line x1="12" y1="21" x2="12" y2="12"/>
+          <line x1="12" y1="8" x2="12" y2="3"/>
+          <line x1="20" y1="21" x2="20" y2="16"/>
+          <line x1="20" y1="12" x2="20" y2="3"/>
+          <line x1="1" y1="14" x2="7" y2="14"/>
+          <line x1="9" y1="8" x2="15" y2="8"/>
+          <line x1="17" y1="16" x2="23" y2="16"/>
+        </svg>
+        <span class="nav-text">Rangos clínicos</span>
+      </button>
+    </nav>
+
+    <div class="sidebar-footer">
+      <div class="shortcut-row"><span>Alertas</span><kbd>A</kbd></div>
+      <div class="shortcut-row"><span>Ventana</span><kbd>1-3</kbd></div>
+      <div class="shortcut-row"><span>Apariencia</span><kbd>T</kbd></div>
+      <div class="shortcut-row"><span>Cerrar</span><kbd>Esc</kbd></div>
     </div>
+  </aside>
+
+  <!-- Toast deslizante desde arriba (Sección 6 — No bloqueante) -->
+  <div id="alerta-banner" role="alert" aria-live="assertive">
+    <span class="alerta-icon" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+        <line x1="12" y1="9" x2="12" y2="13"/>
+        <line x1="12" y1="17" x2="12.01" y2="17"/>
+      </svg>
+    </span>
+    <span id="alerta-texto">—</span>
+    <button type="button" class="alerta-close" onclick="descartarAlerta()" aria-label="Descartar alerta" title="Descartar (Esc)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <line x1="18" y1="6" x2="6" y2="18"/>
+        <line x1="6" y1="6" x2="18" y2="18"/>
+      </svg>
+    </button>
   </div>
-</div>
 
-<!-- Historial -->
-<div class="hist-section">
-  <h2>Historial reciente</h2>
-  <table>
-    <thead>
-      <tr>
-        <th>Hora</th><th>BPM</th><th>T. Corporal</th>
-        <th>T. Ambiente</th><th>Humedad</th><th>Alerta</th>
-      </tr>
-    </thead>
-    <tbody id="hist-tbody">
-      <tr><td colspan="6" style="text-align:center;color:var(--muted)">Cargando…</td></tr>
-    </tbody>
-  </table>
-</div>
+  <!-- ======================================================================
+       CONTENIDO PRINCIPAL (Sección 4 — Grid 12 columnas)
+       ====================================================================== -->
+  <main class="main-content">
+    <div class="panel-grid">
 
-<footer>Sistema de Telemonitoreo · ESP32 + Mosquitto + Flask</footer>
+      <!-- 4 TARJETAS MÉTRICAS (Sección 5.1: span 3, altura 120px, sin bordes ni badges normales) -->
+      <section id="sec-metricas" class="metrics-row" aria-label="Signos vitales actuales">
+        <!-- Card 1: Frecuencia Cardíaca -->
+        <article id="card-bpm" class="card" style="--vital-color: var(--color-hr)">
+          <div class="card-label">
+            <span class="vital-dot" aria-hidden="true"></span>
+            <span>Frecuencia Cardíaca</span>
+          </div>
+          <div class="card-value" id="val-bpm">–<span class="card-unit">bpm</span></div>
+          <div class="card-delta" id="delta-bpm"></div>
+          <div class="card-sub" id="sub-bpm">60–100 bpm</div>
+        </article>
+
+        <!-- Card 2: Temperatura Corporal -->
+        <article id="card-tcorp" class="card" style="--vital-color: var(--color-temp)">
+          <div class="card-label">
+            <span class="vital-dot" aria-hidden="true"></span>
+            <span>Temperatura Corporal</span>
+          </div>
+          <div class="card-value" id="val-tcorp">–<span class="card-unit">°C</span></div>
+          <div class="card-delta" id="delta-tcorp"></div>
+          <div class="card-sub" id="sub-tcorp">36.0–37.5 °C</div>
+        </article>
+
+        <!-- Card 3: Temperatura Ambiente -->
+        <article id="card-tamb" class="card" style="--vital-color: var(--color-tamb)">
+          <div class="card-label">
+            <span class="vital-dot" aria-hidden="true"></span>
+            <span>Temperatura Ambiente</span>
+          </div>
+          <div class="card-value" id="val-tamb">–<span class="card-unit">°C</span></div>
+          <div class="card-delta" id="delta-tamb"></div>
+          <div class="card-sub" id="sub-tamb">15.0–30.0 °C</div>
+        </article>
+
+        <!-- Card 4: Humedad Ambiente -->
+        <article id="card-hum" class="card" style="--vital-color: var(--color-hum)">
+          <div class="card-label">
+            <span class="vital-dot" aria-hidden="true"></span>
+            <span>Humedad Ambiente</span>
+          </div>
+          <div class="card-value" id="val-hum">–<span class="card-unit">%</span></div>
+          <div class="card-delta" id="delta-hum"></div>
+          <div class="card-sub" id="sub-hum">30.0–80.0 %</div>
+        </article>
+      </section>
+
+      <!-- BARRA DE ACELERACIÓN / MOVIMIENTO (Sección 5.3: horizontal, 52px, sin badge en estado normal) -->
+      <section class="accel-bar" aria-label="Aceleración y movimiento">
+        <div class="accel-left">
+          <span class="vital-dot" style="--vital-color: var(--color-accel)" aria-hidden="true"></span>
+          <span class="accel-title">Aceleración y movimiento</span>
+        </div>
+        <div class="accel-right">
+          <span id="val-acel">–</span>
+          <span class="accel-desc">Actividad física y postura del paciente</span>
+          <span id="accel-event-badge" class="event-badge">Movimiento brusco</span>
+        </div>
+      </section>
+
+      <!-- GRÁFICA TIEMPO REAL (Sección 5.2: Span 8 cols, fondo unificado --bg-surface) -->
+      <section id="sec-graficas" class="charts-card" aria-label="Tendencias en tiempo real">
+        <div class="charts-header">
+          <h2 class="section-heading">Tendencias en tiempo real</h2>
+          <div class="segmented-control" role="group" aria-label="Ventana de tiempo">
+            <button type="button" class="seg-btn active" data-window="5m" onclick="cambiarVentanaTiempo('5m', 15, this)">5m</button>
+            <button type="button" class="seg-btn" data-window="15m" onclick="cambiarVentanaTiempo('15m', 30, this)">15m</button>
+            <button type="button" class="seg-btn" data-window="1h" onclick="cambiarVentanaTiempo('1h', 60, this)">1h</button>
+          </div>
+        </div>
+
+        <div class="chart-series">
+          <div class="chart-series-header">
+            <div class="chart-series-title">
+              <span class="vital-dot" style="--vital-color: var(--color-hr)" aria-hidden="true"></span>
+              <span>Frecuencia Cardíaca (bpm)</span>
+            </div>
+            <div class="chart-series-meta">
+              <span class="legend-chip"><span class="swatch-normal"></span>Rango normal</span>
+              <span class="legend-chip"><span class="swatch-threshold"></span>Umbral crítico</span>
+            </div>
+          </div>
+          <div class="chart-wrap">
+            <canvas id="chart-bpm"></canvas>
+          </div>
+        </div>
+
+        <div class="chart-series">
+          <div class="chart-series-header">
+            <div class="chart-series-title">
+              <span class="vital-dot" style="--vital-color: var(--color-temp)" aria-hidden="true"></span>
+              <span>Temperatura Corporal (°C)</span>
+            </div>
+            <div class="chart-series-meta">
+              <span class="legend-chip"><span class="swatch-normal"></span>Rango normal</span>
+              <span class="legend-chip"><span class="swatch-threshold"></span>Umbral crítico</span>
+            </div>
+          </div>
+          <div class="chart-wrap">
+            <canvas id="chart-tcorp"></canvas>
+          </div>
+        </div>
+      </section>
+
+      <!-- HISTORIAL (Sección 4: Span 4 cols) -->
+      <aside id="sec-historial" class="hist-card" aria-label="Historial de lecturas">
+        <div class="hist-header">
+          <h2 class="section-heading">Historial</h2>
+          <span class="hist-caption">Últimos registros</span>
+        </div>
+        <div class="table-container">
+          <table>
+            <thead>
+              <tr>
+                <th>Hora</th>
+                <th>Pulso</th>
+                <th>T. Corp</th>
+                <th>T. Amb</th>
+                <th>Hum</th>
+                <th>Estado</th>
+              </tr>
+            </thead>
+            <tbody id="hist-tbody">
+              <tr><td colspan="6" style="text-align:center;color:var(--text-muted)">Cargando…</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </aside>
+
+      <!-- CONFIGURACIÓN DE RANGOS CLÍNICOS -->
+      <section id="sec-rangos" class="rangos-section" aria-label="Configurar rangos de alerta">
+        <div class="rangos-header" onclick="toggleRangos()" role="button" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleRangos();}">
+          <h2>Configurar rangos de alerta</h2>
+          <span class="rangos-toggle" id="rangos-toggle" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="6 9 12 15 18 9"/>
+            </svg>
+          </span>
+        </div>
+        <div class="rangos-body" id="rangos-body">
+          <div class="rangos-grid" id="rangos-grid">
+            <!-- Se genera dinámicamente -->
+          </div>
+        </div>
+      </section>
+
+    </div>
+  </main>
+</div>
 
 <script>
 // ── Config ────────────────────────────────────────────────────────
 const MQTT_WS  = `wss://${location.hostname}:9001`;
 const BASE     = "salud/paciente1";
-const MAX_PTS  = 30;
+let MAX_PTS    = 30;
 
 // ── DOM helper ────────────────────────────────────────────────────
 const $ = id => document.getElementById(id);
 
-function setVal(id, v, dec = 0) {
-  const el = $(id); if (!el) return;
-  const unit = el.querySelector('.card-unit');
-  if (unit) el.childNodes[0].textContent = v != null ? Number(v).toFixed(dec) : '–';
-  else el.textContent = v != null ? v : '–';
-}
-
-// ── Badges ────────────────────────────────────────────────────────
-function badge(id, cls, txt) {
-  const el = $(id); if (!el) return;
-  el.className = `badge badge-${cls}`;
-  el.querySelector('span:last-child').textContent = txt;
-}
-
-// ── Alerta ────────────────────────────────────────────────────────
-const ALERTA_MSG = {
-  movimiento_brusco:                  "⚠ Movimiento brusco detectado",
-  bpm_fuera_rango:                    "⚠ Frecuencia cardíaca fuera de rango",
-  temperatura_corporal_fuera_rango:   "⚠ Temperatura corporal fuera de rango",
+const lecturasPrevias = {
+  bpm: null,
+  temperatura_corporal: null,
+  temperatura_ambiente: null,
+  humedad_ambiente: null
 };
-function mostrarAlerta(v) {
-  const b = $('alerta-banner'), t = $('alerta-texto');
-  const msg = ALERTA_MSG[v];
-  if (msg) { b.classList.add('active'); t.textContent = msg; }
-  else      { b.classList.remove('active'); }
+
+const ultimosValores = {
+  bpm: null,
+  temperatura_corporal: null
+};
+
+let contadorAlertas = 0;
+
+// ── Reloj en tiempo real (Sección 5.5) ────────────────────────────
+function actualizarReloj() {
+  const el = $('live-clock');
+  if (el) {
+    el.textContent = new Date().toLocaleTimeString('es-CO', { hour12: false });
+  }
+}
+actualizarReloj();
+setInterval(actualizarReloj, 1000);
+
+// ── Sidebar y Navegación ──────────────────────────────────────────
+function toggleSidebar() {
+  const sb = $('app-sidebar');
+  if (sb) sb.classList.toggle('collapsed');
 }
 
-// ── Charts ────────────────────────────────────────────────────────
-function mkChart(id, color, yMin, yMax) {
+function activarNav(el) {
+  document.querySelectorAll('.sidebar-nav .nav-item').forEach(i => i.classList.remove('active'));
+  if (el) el.classList.add('active');
+}
+
+function abrirYEnfocarRangos(btn) {
+  activarNav(btn);
+  const body = $('rangos-body');
+  const toggle = $('rangos-toggle');
+  if (body && !body.classList.contains('open')) {
+    body.classList.add('open');
+    if (toggle) toggle.classList.add('open');
+    if (Object.keys(rangosActuales).length === 0) cargarRangos();
+  }
+  const sec = $('sec-rangos');
+  if (sec) sec.scrollIntoView({ behavior: 'smooth' });
+}
+
+// ── Actualización de métricas (Sección 5.1 y 8) ───────────────────
+function setVal(id, v, dec = 0) {
+  const el = $(id);
+  if (!el) return;
+  const unit = el.querySelector('.card-unit');
+  const formatted = v != null ? Number(v).toFixed(dec) : '–';
+  if (unit) {
+    el.childNodes[0].textContent = formatted;
+  } else {
+    el.textContent = formatted;
+  }
+
+  if (!document.body.classList.contains('critical-alert-active')) {
+    el.classList.add('fade-tick');
+    setTimeout(() => el.classList.remove('fade-tick'), 100);
+  }
+}
+
+function evaluarEstadoYDelta(paramKey, val, cardId, deltaId, unitStr, dec) {
+  const prev = lecturasPrevias[paramKey];
+  const deltaEl = $(deltaId);
+  if (deltaEl && val != null) {
+    if (prev != null) {
+      const diff = val - prev;
+      if (Math.abs(diff) > 0) {
+        const sign = diff > 0 ? '+' : '';
+        deltaEl.textContent = `${sign}${diff.toFixed(dec)} ${unitStr} vs. lectura anterior`;
+      } else {
+        deltaEl.textContent = '';
+      }
+    } else {
+      deltaEl.textContent = '';
+    }
+    lecturasPrevias[paramKey] = val;
+  }
+
+  const card = $(cardId);
+  const r = rangosActuales[paramKey];
+  if (!card || !r || val == null) return;
+
+  const span = r.max - r.min;
+  const warnMargin = span * 0.08;
+
+  card.classList.remove('is-warning', 'is-danger');
+  if (val < r.min || val > r.max) {
+    card.classList.add('is-danger');
+  } else if (val <= r.min + warnMargin || val >= r.max - warnMargin) {
+    card.classList.add('is-warning');
+  }
+}
+
+// ── Traducción de estados técnicos a lenguaje de producto (Sección 6)
+function badge(id, cls, txt) {
+  if (id === 'badge-mqtt') {
+    const wrap = $('badge-mqtt');
+    const textEl = $('conn-text');
+    if (!wrap || !textEl) return;
+
+    wrap.classList.remove('is-connected', 'is-reconnecting', 'is-disconnected');
+    if (cls === 'ok') {
+      // Conectado -> silencio visual (solo punto verde)
+      wrap.classList.add('is-connected');
+      textEl.textContent = '';
+    } else if (cls === 'warn') {
+      // Reconectando -> punto ámbar + "Reconectando…"
+      wrap.classList.add('is-reconnecting');
+      textEl.textContent = 'Reconectando…';
+    } else {
+      // Desconectado / Error -> punto rojo + "Sin conexión"
+      wrap.classList.add('is-disconnected');
+      textEl.textContent = 'Sin conexión';
+    }
+  } else if (id === 'badge-dispositivo') {
+    const dot = $('device-offline-dot');
+    if (!dot) return;
+    // Online -> silencio visual; Offline -> punto rojo junto al nombre
+    const isOffline = cls === 'danger' || (txt && txt.toLowerCase().includes('offline'));
+    dot.classList.toggle('visible', isOffline);
+  }
+}
+
+// ── Alertas clínicas (Sección 6) ──────────────────────────────────
+const ALERTA_MSG = {
+  movimiento_brusco:                "Movimiento brusco detectado",
+  bpm_fuera_rango:                  "Frecuencia cardíaca fuera de rango",
+  temperatura_corporal_fuera_rango: "Temperatura corporal fuera de rango",
+};
+
+function construirTextoAlerta(codigo) {
+  const base = ALERTA_MSG[codigo];
+  if (!base) return null;
+  if (codigo === 'bpm_fuera_rango' && ultimosValores.bpm != null) {
+    return `${base} · ${Number(ultimosValores.bpm).toFixed(0)} bpm`;
+  }
+  if (codigo === 'temperatura_corporal_fuera_rango' && ultimosValores.temperatura_corporal != null) {
+    return `${base} · ${Number(ultimosValores.temperatura_corporal).toFixed(1)} °C`;
+  }
+  return base;
+}
+
+function mostrarAlerta(v) {
+  const b = $('alerta-banner');
+  const t = $('alerta-texto');
+  const countEl = $('alert-count-badge');
+  const accelBadge = $('accel-event-badge');
+  const msg = construirTextoAlerta(v);
+
+  if (accelBadge) {
+    accelBadge.classList.toggle('visible', v === 'movimiento_brusco');
+  }
+
+  if (msg) {
+    b.classList.add('active');
+    t.textContent = msg;
+    document.body.classList.add('critical-alert-active');
+    contadorAlertas += 1;
+    if (countEl) {
+      countEl.textContent = String(contadorAlertas);
+      countEl.classList.add('visible');
+    }
+  } else {
+    b.classList.remove('active');
+    document.body.classList.remove('critical-alert-active');
+  }
+}
+
+function descartarAlerta() {
+  const b = $('alerta-banner');
+  if (b) b.classList.remove('active');
+  document.body.classList.remove('critical-alert-active');
+}
+
+function irAAlertas() {
+  const b = $('alerta-banner');
+  if (b && b.classList.contains('active')) {
+    b.focus();
+  } else {
+    const sec = $('sec-historial');
+    if (sec) sec.scrollIntoView({ behavior: 'smooth' });
+  }
+}
+
+// ── Gráficas de tiempo real con zonas de referencia (Sección 5.2) ─
+const referenceZonesPlugin = {
+  id: 'referenceZones',
+  beforeDatasetsDraw(chart) {
+    const paramKey = chart.config.options.plugins?.referenceZones?.paramKey;
+    if (!paramKey || !rangosActuales[paramKey]) return;
+    const r = rangosActuales[paramKey];
+    const { ctx, chartArea, scales } = chart;
+    if (!chartArea || !scales.y) return;
+
+    const yTop = Math.max(chartArea.top, Math.min(chartArea.bottom, scales.y.getPixelForValue(r.max)));
+    const yBot = Math.max(chartArea.top, Math.min(chartArea.bottom, scales.y.getPixelForValue(r.min)));
+
+    ctx.save();
+    // Banda de rango normal: --state-success (#34C759) al 5% de opacidad, sin borde
+    if (yBot > yTop) {
+      ctx.fillStyle = 'rgba(52, 199, 89, 0.05)';
+      ctx.fillRect(chartArea.left, yTop, chartArea.width, yBot - yTop);
+    }
+
+    // Umbral crítico: línea dashed 1px, --state-danger (#FF3B30)
+    ctx.strokeStyle = '#FF3B30';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([5, 5]);
+    [r.min, r.max].forEach(val => {
+      const py = scales.y.getPixelForValue(val);
+      if (py >= chartArea.top && py <= chartArea.bottom) {
+        ctx.beginPath();
+        ctx.moveTo(chartArea.left, py);
+        ctx.lineTo(chartArea.right, py);
+        ctx.stroke();
+      }
+    });
+    ctx.restore();
+  }
+};
+
+Chart.register(referenceZonesPlugin);
+
+function hexToRgba(hex, alpha) {
+  const clean = hex.replace('#', '');
+  const r = parseInt(clean.substring(0, 2), 16);
+  const g = parseInt(clean.substring(2, 4), 16);
+  const b = parseInt(clean.substring(4, 6), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+function mkChart(id, color, yMin, yMax, paramKey) {
   return new Chart($(id).getContext('2d'), {
     type: 'line',
-    data: { labels: [], datasets: [{ data: [], borderColor: color,
-      backgroundColor: color + '22', borderWidth: 2,
-      pointRadius: 2, tension: 0.3, fill: true }] },
+    data: {
+      labels: [],
+      datasets: [{
+        data: [],
+        borderColor: color,
+        backgroundColor: hexToRgba(color, 0.06),
+        borderWidth: 2,
+        pointRadius: 0,
+        pointHoverRadius: 4.5,
+        pointHoverBackgroundColor: color,
+        pointHoverBorderColor: '#FFFFFF',
+        pointHoverBorderWidth: 2,
+        pointHitRadius: 14,
+        tension: 0.32,
+        fill: true
+      }]
+    },
     options: {
-      responsive: true, animation: { duration: 250 },
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: { duration: 180 },
+      interaction: { mode: 'index', intersect: false },
       scales: {
-        x: { display: false },
-        y: { min: yMin, max: yMax,
-             grid:  { color: '#1e2d40' },
-             ticks: { color: '#64748B', font: { size: 10 } } }
+        x: {
+          display: true,
+          border: { color: 'rgba(0,0,0,0.08)', width: 1 },
+          grid: { display: false },
+          ticks: {
+            color: '#AEAEB2',
+            maxRotation: 0,
+            autoSkip: true,
+            maxTicksLimit: 6,
+            font: { family: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Inter", system-ui, sans-serif', size: 11 }
+          }
+        },
+        y: {
+          min: yMin,
+          max: yMax,
+          border: { color: 'rgba(0,0,0,0.08)', width: 1 },
+          grid: { color: 'rgba(0,0,0,0.05)', drawTicks: false },
+          ticks: {
+            color: '#AEAEB2',
+            maxTicksLimit: 5,
+            padding: 6,
+            font: { family: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Inter", system-ui, sans-serif', size: 11 }
+          }
+        }
       },
-      plugins: { legend: { display: false },
-                 tooltip: { mode: 'index', intersect: false } }
+      plugins: {
+        legend: { display: false },
+        referenceZones: { paramKey },
+        tooltip: {
+          mode: 'index',
+          intersect: false,
+          backgroundColor: '#FFFFFF',
+          borderColor: 'rgba(0,0,0,0.08)',
+          borderWidth: 1,
+          titleColor: '#6E6E73',
+          bodyColor: '#1D1D1F',
+          cornerRadius: 8,
+          padding: 10,
+          titleFont: { family: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Inter", system-ui, sans-serif', size: 11, weight: '400' },
+          bodyFont: { family: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Inter", system-ui, sans-serif', size: 13, weight: '700' }
+        }
+      }
     }
   });
 }
-const chartBpm   = mkChart('chart-bpm',   '#ef4444', 30,  160);
-const chartTcorp = mkChart('chart-tcorp', '#f59e0b', 34,   40);
+
+const chartBpm   = mkChart('chart-bpm',   '#FF3B30', 45, 120, 'bpm');
+const chartTcorp = mkChart('chart-tcorp', '#FF9500', 34,  40, 'temperatura_corporal');
 
 function pushPt(chart, label, val) {
   if (val == null) return;
   chart.data.labels.push(label);
   chart.data.datasets[0].data.push(val);
-  if (chart.data.labels.length > MAX_PTS) {
-    chart.data.labels.shift(); chart.data.datasets[0].data.shift();
+  while (chart.data.labels.length > MAX_PTS) {
+    chart.data.labels.shift();
+    chart.data.datasets[0].data.shift();
   }
   chart.update('none');
 }
 
+function cambiarVentanaTiempo(windowKey, pts, btnEl) {
+  MAX_PTS = pts;
+  document.querySelectorAll('.seg-btn').forEach(b => b.classList.remove('active'));
+  if (btnEl) btnEl.classList.add('active');
+  cargarHistorial(pts, true);
+}
+
+// ── Tema Claro (por defecto) y Oscuro (clase .dark en <html>) ─────
+function aplicarTema(modoOscuro) {
+  document.documentElement.classList.toggle('dark', modoOscuro);
+  try { localStorage.setItem('iot-theme-apple', modoOscuro ? 'dark' : 'light'); } catch (_) {}
+
+  const axisBorder   = modoOscuro ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)';
+  const gridY        = modoOscuro ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)';
+  const tickColor    = modoOscuro ? '#48484A' : '#AEAEB2';
+  const tooltipBg    = modoOscuro ? '#2C2C2E' : '#FFFFFF';
+  const tooltipTitle = modoOscuro ? '#98989D' : '#6E6E73';
+  const tooltipBody  = modoOscuro ? '#F5F5F7' : '#1D1D1F';
+  const surfaceBg    = modoOscuro ? '#1C1C1E' : '#FFFFFF';
+
+  [chartBpm, chartTcorp].forEach(ch => {
+    if (!ch) return;
+    ch.options.scales.x.border.color = axisBorder;
+    ch.options.scales.x.ticks.color  = tickColor;
+    ch.options.scales.y.border.color = axisBorder;
+    ch.options.scales.y.grid.color   = gridY;
+    ch.options.scales.y.ticks.color  = tickColor;
+    ch.options.plugins.tooltip.backgroundColor = tooltipBg;
+    ch.options.plugins.tooltip.borderColor     = axisBorder;
+    ch.options.plugins.tooltip.titleColor      = tooltipTitle;
+    ch.options.plugins.tooltip.bodyColor       = tooltipBody;
+    ch.data.datasets[0].pointHoverBorderColor  = surfaceBg;
+    ch.update('none');
+  });
+}
+
+function toggleTheme() {
+  const esOscuro = document.documentElement.classList.contains('dark');
+  aplicarTema(!esOscuro);
+}
+
+(function initTheme() {
+  let saved = null;
+  try { saved = localStorage.getItem('iot-theme-apple'); } catch (_) {}
+  if (saved === 'dark') {
+    aplicarTema(true);
+  } else if (saved === 'light') {
+    aplicarTema(false);
+  } else {
+    // Por defecto: Modo Claro (Sección 1 y 9.7)
+    aplicarTema(false);
+  }
+})();
+
 // ── Historial ─────────────────────────────────────────────────────
 function clsAlerta(a) {
-  if (!a || a==='ninguna'||a==='cancelada_por_usuario') return 'a-ok';
-  if (a==='movimiento_brusco') return 'a-warn';
+  if (!a || a === 'ninguna' || a === 'cancelada_por_usuario') return 'a-ok';
+  if (a === 'movimiento_brusco') return 'a-warn';
   return 'a-danger';
 }
-function cargarHistorial() {
-  fetch('/api/historial?limit=15').then(r=>r.json()).then(rows=>{
+
+function formatearAlertaTabla(a) {
+  if (!a || a === 'ninguna' || a === 'cancelada_por_usuario') return '—';
+  if (a === 'movimiento_brusco') return 'Movimiento';
+  if (a === 'bpm_fuera_rango') return 'Pulso fuera de rango';
+  if (a === 'temperatura_corporal_fuera_rango') return 'Temp. fuera de rango';
+  return a;
+}
+
+function cargarHistorial(limit = 15, syncCharts = false) {
+  fetch(`/api/historial?limit=${limit}`).then(r => r.json()).then(rows => {
     const tb = $('hist-tbody');
-    if (!rows.length) { tb.innerHTML='<tr><td colspan="6" style="text-align:center;color:var(--muted)">Sin datos</td></tr>'; return; }
-    tb.innerHTML = rows.reverse().map(r=>`<tr>
-      <td>${(r.ts||'–').replace('T',' ').substring(0,19)}</td>
-      <td>${r.bpm!=null?Number(r.bpm).toFixed(0):'–'}</td>
-      <td>${r.temperatura_corporal!=null?Number(r.temperatura_corporal).toFixed(1)+'°C':'–'}</td>
-      <td>${r.temperatura_ambiente!=null?Number(r.temperatura_ambiente).toFixed(1)+'°C':'–'}</td>
-      <td>${r.humedad_ambiente!=null?Number(r.humedad_ambiente).toFixed(1)+'%':'–'}</td>
-      <td class="${clsAlerta(r.alerta)}">${r.alerta||'ninguna'}</td>
+    if (!rows.length) {
+      tb.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text-muted)">Sin lecturas recientes</td></tr>';
+      return;
+    }
+
+    if (syncCharts || chartBpm.data.labels.length === 0) {
+      chartBpm.data.labels = [];
+      chartBpm.data.datasets[0].data = [];
+      chartTcorp.data.labels = [];
+      chartTcorp.data.datasets[0].data = [];
+      rows.forEach(r => {
+        const hora = (r.ts || '').includes('T') ? r.ts.split('T')[1].substring(0, 8) : (r.ts || '').substring(11, 19);
+        if (r.bpm != null) pushPt(chartBpm, hora, Number(r.bpm));
+        if (r.temperatura_corporal != null) pushPt(chartTcorp, hora, Number(r.temperatura_corporal));
+      });
+    }
+
+    tb.innerHTML = rows.slice().reverse().map(r => `<tr>
+      <td>${(r.ts || '–').replace('T', ' ').substring(11, 19) || (r.ts || '–').substring(0, 19)}</td>
+      <td>${r.bpm != null ? Number(r.bpm).toFixed(0) : '–'}</td>
+      <td>${r.temperatura_corporal != null ? Number(r.temperatura_corporal).toFixed(1) + '°C' : '–'}</td>
+      <td>${r.temperatura_ambiente != null ? Number(r.temperatura_ambiente).toFixed(1) + '°C' : '–'}</td>
+      <td>${r.humedad_ambiente != null ? Number(r.humedad_ambiente).toFixed(1) + '%' : '–'}</td>
+      <td class="${clsAlerta(r.alerta)}">${formatearAlertaTabla(r.alerta)}</td>
     </tr>`).join('');
-  }).catch(()=>{});
+  }).catch(() => {});
 }
 cargarHistorial();
-setInterval(cargarHistorial, 15000);
+setInterval(() => cargarHistorial(15, false), 15000);
 
 // ── Panel de rangos ───────────────────────────────────────────────
 let rangosActuales = {};
 
 const RANGOS_META = [
-  { key: 'bpm',                 label: 'Frecuencia Cardíaca',  unit: 'bpm', dec: 0 },
-  { key: 'temperatura_corporal',label: 'Temperatura Corporal', unit: '°C',  dec: 1 },
-  { key: 'temperatura_ambiente',label: 'Temperatura Ambiente', unit: '°C',  dec: 1 },
-  { key: 'humedad_ambiente',    label: 'Humedad Ambiente',     unit: '%',   dec: 1 },
+  { key: 'bpm',                  label: 'Frecuencia Cardíaca',  unit: 'bpm', dec: 0 },
+  { key: 'temperatura_corporal', label: 'Temperatura Corporal', unit: '°C',  dec: 1 },
+  { key: 'temperatura_ambiente', label: 'Temperatura Ambiente', unit: '°C',  dec: 1 },
+  { key: 'humedad_ambiente',     label: 'Humedad Ambiente',     unit: '%',   dec: 1 },
 ];
 
 function toggleRangos() {
@@ -440,10 +1952,12 @@ function toggleRangos() {
 }
 
 function cargarRangos() {
-  fetch('/api/rangos').then(r=>r.json()).then(data=>{
+  fetch('/api/rangos').then(r => r.json()).then(data => {
     rangosActuales = data;
     renderRangos();
-  }).catch(()=>{});
+    chartBpm.update('none');
+    chartTcorp.update('none');
+  }).catch(() => {});
 }
 
 function renderRangos() {
@@ -453,11 +1967,11 @@ function renderRangos() {
     return `<div class="rango-item">
       <div class="rango-label">${m.label} (${m.unit})</div>
       <div class="rango-inputs">
-        <label>Mín</label>
-        <input type="number" id="rmin-${m.key}" value="${r.min}" step="${m.dec>0?'0.1':'1'}">
-        <label>Máx</label>
-        <input type="number" id="rmax-${m.key}" value="${r.max}" step="${m.dec>0?'0.1':'1'}">
-        <button class="btn-guardar" onclick="guardarRango('${m.key}', this)">Guardar</button>
+        <label for="rmin-${m.key}">Mín</label>
+        <input type="number" id="rmin-${m.key}" value="${r.min}" step="${m.dec > 0 ? '0.1' : '1'}">
+        <label for="rmax-${m.key}">Máx</label>
+        <input type="number" id="rmax-${m.key}" value="${r.max}" step="${m.dec > 0 ? '0.1' : '1'}">
+        <button type="button" class="btn-guardar" onclick="guardarRango('${m.key}', this)">Guardar</button>
       </div>
       <div class="rango-estado" id="rst-${m.key}"></div>
     </div>`;
@@ -470,7 +1984,7 @@ function guardarRango(key, btn) {
   const estado = $(`rst-${key}`);
 
   if (isNaN(min) || isNaN(max) || min >= max) {
-    estado.style.color = 'var(--danger)';
+    estado.style.color = 'var(--state-danger)';
     estado.textContent = 'El mínimo debe ser menor que el máximo';
     return;
   }
@@ -486,22 +2000,22 @@ function guardarRango(key, btn) {
   .then(r => r.json())
   .then(() => {
     rangosActuales[key] = { min, max };
-    btn.textContent = '✓ Guardado';
-    btn.classList.add('saved');
-    estado.style.color = 'var(--ok)';
+    btn.textContent = 'Guardado';
+    estado.style.color = 'var(--state-success)';
     estado.textContent = `Rango actualizado: ${min} – ${max}`;
     setTimeout(() => {
       btn.textContent = 'Guardar';
-      btn.classList.remove('saved');
       btn.disabled = false;
       estado.textContent = '';
     }, 2500);
     actualizarSubtextos();
+    chartBpm.update('none');
+    chartTcorp.update('none');
   })
   .catch(() => {
     btn.textContent = 'Guardar';
     btn.disabled = false;
-    estado.style.color = 'var(--danger)';
+    estado.style.color = 'var(--state-danger)';
     estado.textContent = 'Error al guardar';
   });
 }
@@ -509,19 +2023,54 @@ function guardarRango(key, btn) {
 function actualizarSubtextos() {
   const rb = rangosActuales['bpm'];
   const rt = rangosActuales['temperatura_corporal'];
-  if (rb) $('sub-bpm').textContent  = `Normal: ${rb.min}–${rb.max} bpm`;
-  if (rt) $('sub-tcorp').textContent = `Normal: ${rt.min}–${rt.max} °C`;
+  if (rb && $('sub-bpm'))   $('sub-bpm').textContent   = `${rb.min}–${rb.max} bpm`;
+  if (rt && $('sub-tcorp')) $('sub-tcorp').textContent = `${rt.min}–${rt.max} °C`;
 }
 
-// Cargar rangos al inicio para actualizar subtextos
-fetch('/api/rangos').then(r=>r.json()).then(data=>{
+fetch('/api/rangos').then(r => r.json()).then(data => {
   rangosActuales = data;
   actualizarSubtextos();
-}).catch(()=>{});
+  chartBpm.update('none');
+  chartTcorp.update('none');
+}).catch(() => {});
 
-// ── MQTT ──────────────────────────────────────────────────────────
+// ── Shortcuts de teclado (Sección 7) ──────────────────────────────
+document.addEventListener('keydown', (e) => {
+  const tag = (e.target && e.target.tagName) ? e.target.tagName.toLowerCase() : '';
+  if (tag === 'input' || tag === 'textarea' || tag === 'select') {
+    if (e.key === 'Escape') e.target.blur();
+    return;
+  }
+
+  if (e.key === 'a' || e.key === 'A') {
+    e.preventDefault();
+    irAAlertas();
+  } else if (e.key === 't' || e.key === 'T') {
+    e.preventDefault();
+    toggleTheme();
+  } else if (e.key === '1') {
+    const btn = document.querySelector('.seg-btn[data-window="5m"]');
+    if (btn) cambiarVentanaTiempo('5m', 15, btn);
+  } else if (e.key === '2') {
+    const btn = document.querySelector('.seg-btn[data-window="15m"]');
+    if (btn) cambiarVentanaTiempo('15m', 30, btn);
+  } else if (e.key === '3') {
+    const btn = document.querySelector('.seg-btn[data-window="1h"]');
+    if (btn) cambiarVentanaTiempo('1h', 60, btn);
+  } else if (e.key === 'Escape') {
+    descartarAlerta();
+    const body = $('rangos-body');
+    const toggle = $('rangos-toggle');
+    if (body && body.classList.contains('open')) {
+      body.classList.remove('open');
+      if (toggle) toggle.classList.remove('open');
+    }
+  }
+});
+
+// ── Conexión en tiempo real ───────────────────────────────────────
 const client = mqtt.connect(MQTT_WS, {
-  clientId: 'dash-' + Math.random().toString(16).substr(2,8),
+  clientId: 'dash-' + Math.random().toString(16).substr(2, 8),
   reconnectPeriod: 3000,
   username: 'worker',
   password: 'tele2024wk',
@@ -529,12 +2078,12 @@ const client = mqtt.connect(MQTT_WS, {
 });
 
 client.on('connect', () => {
-  badge('badge-mqtt', 'ok', 'MQTT: OK');
+  badge('badge-mqtt', 'ok', '');
   client.subscribe(`${BASE}/#`);
 });
-client.on('reconnect', () => badge('badge-mqtt', 'warn', 'MQTT: reconectando…'));
-client.on('offline',   () => badge('badge-mqtt', 'off',  'MQTT: sin conexión'));
-client.on('error',     () => badge('badge-mqtt', 'danger','MQTT: error'));
+client.on('reconnect', () => badge('badge-mqtt', 'warn', 'Reconectando…'));
+client.on('offline',   () => badge('badge-mqtt', 'off',  'Sin conexión'));
+client.on('error',     () => badge('badge-mqtt', 'danger', 'Sin conexión'));
 
 client.on('message', (topic, payload) => {
   const sub  = topic.replace(`${BASE}/`, '');
@@ -543,35 +2092,35 @@ client.on('message', (topic, payload) => {
 
   switch (sub) {
     case 'estado':
-      badge('badge-dispositivo',
-        val==='online' ? 'ok' : 'danger',
-        'Dispositivo: ' + val);
+      badge('badge-dispositivo', val === 'online' ? 'ok' : 'danger', val);
       break;
 
     case 'bpm': {
       const v = parseFloat(val); if (isNaN(v)) break;
+      ultimosValores.bpm = v;
       setVal('val-bpm', v, 0);
-      const rb = rangosActuales['bpm'];
-      $('val-bpm').style.color = (rb && (v<rb.min||v>rb.max)) ? 'var(--danger)' : 'var(--ok)';
+      evaluarEstadoYDelta('bpm', v, 'card-bpm', 'delta-bpm', 'bpm', 0);
       pushPt(chartBpm, hora, v);
       break;
     }
     case 'temperatura_corporal': {
       const v = parseFloat(val); if (isNaN(v)) break;
+      ultimosValores.temperatura_corporal = v;
       setVal('val-tcorp', v, 1);
-      const rt = rangosActuales['temperatura_corporal'];
-      $('val-tcorp').style.color = (rt && (v<rt.min||v>rt.max)) ? 'var(--danger)' : 'var(--ok)';
+      evaluarEstadoYDelta('temperatura_corporal', v, 'card-tcorp', 'delta-tcorp', '°C', 1);
       pushPt(chartTcorp, hora, v);
       break;
     }
     case 'temperatura_ambiente': {
       const v = parseFloat(val); if (isNaN(v)) break;
       setVal('val-tamb', v, 1);
+      evaluarEstadoYDelta('temperatura_ambiente', v, 'card-tamb', 'delta-tamb', '°C', 1);
       break;
     }
     case 'humedad_ambiente': {
       const v = parseFloat(val); if (isNaN(v)) break;
       setVal('val-hum', v, 1);
+      evaluarEstadoYDelta('humedad_ambiente', v, 'card-hum', 'delta-hum', '%', 1);
       break;
     }
     case 'aceleracion':
@@ -583,7 +2132,7 @@ client.on('message', (topic, payload) => {
       break;
   }
 
-  $('ts-label').textContent = 'Actualizado: ' + hora;
+  $('ts-label').textContent = hora;
 });
 </script>
 </body>
